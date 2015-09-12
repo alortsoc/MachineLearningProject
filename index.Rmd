@@ -1,0 +1,179 @@
+---
+title: "Activity quality prediction from HAR activity monitors"
+output: 
+  html_document:
+    toc: true
+---
+
+## Overview
+This document will show the usage of machine learning algorithms to predict how well body movements are done using Human Activity Recognition sampled data. Training and testing datasets will be downloaded form their provided location, and they will be cleaned to ease training activities. After this, some machine learning learning algorithms will be applied to fit prediction models. Caret package utilities will be used to retrieve prediction quality measures and some conclusions will be extracted.
+
+Input data comes from the following study: [Qualitative Activity Recognition of Weight Lifting Exercises](http://groupware.les.inf.puc-rio.br/public/papers/2013.Velloso.QAR-WLE.pdf) where six participants performed a dumbell lifting exercise in several ways. Those ways, as described in the study, were “exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbell only halfway (Class C), lowering the dumbell only halfway (Class D) and throwing the hips to the front (Class E); class A corresponds to the specified execution of the exercise, while the other 4 classes correspond to common mistakes. This way of doing the exercise is the measure that will be predicted by machine learning algorithms.
+
+
+## Input data
+First, provided training and testing data sets are downloaded
+```{r loadPackages, message=FALSE, warning=FALSE}
+library(caret)
+library(rpart)
+library(gbm)
+library(plyr)
+library(randomForest)
+```
+```{r loadData, message=FALSE, warning=FALSE, cache=TRUE}
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", "pml-training.csv")
+harDataFrame <- read.csv("pml-training.csv")
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", "pml-testing.csv")
+harSubmission <- read.csv("pml-testing.csv")
+```
+
+Dataset _harSubmission_ will only be used for the submission activity (it does not contain the variable to predict). So, _harDataFrame_ will be splitted into training and testing sets to fit prediction models that will be tested in this exercise. However, data transformations performed in the main dataset to clean it, must be also performed in the submission data set.
+
+## Cleaning data
+If dataset columns are checked, it can be seen that first 7 columns are pointless for predicting (they contain measures like measure, window or user indentifiers and timestamps), so they can be removed form the dataset:
+
+```{r removeUserTimestampVariables}
+#removing variables "X", "user_name", "raw_timestamp_part_1", "raw_timestamp_part_2", "cvtd_timestamp", "new_window", "num_window" from data frames
+harDataFrame <- harDataFrame[,-c(1:7)]
+harSubmission <- harSubmission[,-c(1:7)]
+ncol(harDataFrame)
+```
+
+Now, focus should be set on NA values. There are several variables with a high number of NA values, which are going to be useless to predict. So, they will be removed form datasets:
+
+```{r removeVariablesWithLotsNA}
+trainingRows <- nrow(harDataFrame)
+rateForRemoval <- 0.6
+variablesToRemove <- c()
+#get columns with a high number of NA
+for (variable in names(harDataFrame)) {
+    naNumber <- sum(is.na(harDataFrame[,variable])) / trainingRows
+    if (naNumber > rateForRemoval) {
+       variablesToRemove <- c(variablesToRemove, variable)
+    }
+}
+#remove retrieved columns
+harDataFrame <- harDataFrame[,!names(harDataFrame) %in% variablesToRemove]
+harSubmission <- harSubmission[,!names(harSubmission) %in% variablesToRemove]
+ncol(harDataFrame)
+```
+
+Finally those predictors with very few different values in the dataset (zero or near zero variance variables) will be also removed form datasets.
+
+```{r removeVariablesWithNearZeroVariance}
+variablesWithNearZeroVariance <- nearZeroVar(harDataFrame)
+harDataFrame <- harDataFrame[,-variablesWithNearZeroVariance]
+harSubmission <- harSubmission[,-variablesWithNearZeroVariance]
+names(harDataFrame)
+```
+
+Remaining 52 predictors will be used to estimate the **classe** outcome. Removed 107 variables were not useful for that calculation.
+
+## Machine learning algorithm selection
+To apply machine learning algorithms, first we should create proper training and testing datasets
+
+```{r createTrainigAndTestingDatasets}
+set.seed(1296)
+inTrain <- createDataPartition(harDataFrame$classe, p = 0.6, list = FALSE)
+harDataTraining <- harDataFrame[inTrain,]
+harDataTesting <- harDataFrame[-inTrain,]
+#create training control object used for cross validation (K-fold with K=4)
+trControlCV <- trainControl(method = "cv", number = 4)
+```
+
+For each algorithm, 3 different models will be fit: one with default settings (resampling made by bootstrapping), another with cross-validation (K-fold with K=4) and the last one with cross-validation and preprocessing. Tested algortims will be classification trees, random forest and boosting, they have been chosen because they are the most popular ones (if results are not good, perhaps some regression model should be tried).
+
+Quality of algorithms will be based on the accuracy provided by applying fitted model against the testing dataset created above. Out of sample error is calculated as follows: 
+**(1 - accuracy)**.
+
+
+### Classification tree
+```{r classificationTree, cache=TRUE}
+#fit models
+set.seed(1296)
+modelTree <- train(classe ~ .,data = harDataTraining, method = "rpart")
+set.seed(1296)
+modelTreeCV <- train(classe ~ .,data = harDataTraining, method = "rpart", trControl = trControlCV)
+set.seed(1296)
+modelTreeCVPreProcess <- train(classe ~ .,data = harDataTraining, method = "rpart", trControl = trControlCV, preProcess = c("center","scale"))
+#make predictions
+predictTree <- predict(modelTree, harDataTesting)
+predictTreeCV <- predict(modelTreeCV, harDataTesting)
+predictTreeCVPreProcess <- predict(modelTreeCVPreProcess, harDataTesting)
+#measure accuracy
+accuracy <- c(confusionMatrix(predictTree, harDataTesting$classe)$overall[1], confusionMatrix(predictTreeCV, harDataTesting$classe)$overall[1], confusionMatrix(predictTreeCVPreProcess, harDataTesting$classe)$overall[1])
+names(accuracy) <- c("modelTree", "modelTreeCV", "modelTreeCVPreProcesss")
+outOfSampleError <- rep(1,length(accuracy)) - accuracy
+```
+```{r printAccuracy}
+accuracy
+outOfSampleError
+```
+
+As it can be seen, the accuracy provided by this algorithm for this dataset with the default configuration is really poor (perhaps some fine tunning would be required). So, other method must be chosen. 
+
+### Boosting
+```{r boosting, cache=TRUE}
+#fit models
+#Run when using boosting for resampling takes a huge amount of time, so its results must be discarded
+set.seed(1296)
+modelBoostCV <- train(classe ~ .,data = harDataTraining, method = "gbm", trControl = trControlCV, verbose = FALSE)
+set.seed(1296)
+modelBoostCVPreProcess <- train(classe ~ .,data = harDataTraining, method = "gbm", trControl = trControlCV, preProcess = c("center","scale"), verbose = FALSE)
+#make predictions
+predictBoostCV <- predict(modelBoostCV, harDataTesting)
+predictBoostCVPreProcess <- predict(modelBoostCVPreProcess, harDataTesting)
+#measure accuracy
+accuracy <- c(confusionMatrix(predictBoostCV, harDataTesting$classe)$overall[1], confusionMatrix(predictBoostCVPreProcess, harDataTesting$classe)$overall[1])
+names(accuracy) <- c("modelBoostCV", "modelBoostCVPreProcesss")
+outOfSampleError <- rep(1,length(accuracy)) - accuracy
+```
+```{r printAccuracy2, ref.label="printAccuracy"}
+```
+
+For this algorithm, training with bootstrapping resampling takes a very long amount of time (more than 20 minutes), so their results are not presented here. Other trainings take following time to fit the prediction model:
+
+* cross-validation: 217 seconds
+* cross-validation with preprocessing: 212 seconds
+
+In this case, the accuracy is really good, and fitted models seem good enough to predict new datasets.
+
+
+### Random forests
+```{r randomForest, cache=TRUE}
+#fit models
+#Run when using boosting for resampling takes a huge amount of time, so its results must be discarded
+set.seed(1296)
+modelRFCV <- train(classe ~ .,data = harDataTraining, method = "rf", trControl = trControlCV)
+set.seed(1296)
+modelRFCVPreProcess <- train(classe ~ .,data = harDataTraining, method = "rf", trControl = trControlCV, preProcess = c("center","scale"))
+#make predictions
+predictRFCV <- predict(modelRFCV, harDataTesting)
+predictRFCVPreProcess <- predict(modelRFCVPreProcess, harDataTesting)
+#measure accuracy
+accuracy <- c(confusionMatrix(predictRFCV, harDataTesting$classe)$overall[1], confusionMatrix(predictRFCVPreProcess, harDataTesting$classe)$overall[1])
+names(accuracy) <- c("modelRFCV", "modelTreeRFCVPreProcesss")
+outOfSampleError <- rep(1,length(accuracy)) - accuracy
+```
+```{r printAccuracy3, ref.label="printAccuracy"}
+```
+
+As happened with boosting, training with bootstrapping resampling takes a very long amount of time (more than 30 minutes), so their results are not presented here. Other training take following time to fit the prediction model:
+
+* cross-validation: 523 seconds
+* cross-validation with preprocessing: 551 seconds
+
+This algorithm provides for this dataset a slightly better accuracy that boosting. However, it is more than twice as slow to fit predictions models.
+
+## Conclusions
+After tests performed in previous sections, it can be established that both _boosting_ and _random forest_ are good enough to deal with the proposed prediction problem in the given dataset. _Random forest_ is slightly more accurate but it is also much slower.
+
+For validation dataset used in the submission activity, every model fitted with _boosting_ and _random forest_ models provides the same prediction (which incidentally, is it fully correct when submitted)
+
+```{r checkValidationSet}
+submitedPrediction <- predict(modelBoostCVPreProcess, harSubmission)
+all(sapply(list(predict(modelBoostCV, harSubmission), predict(modelRFCVPreProcess, harSubmission), predict(modelRFCV, harSubmission)), identical, submitedPrediction))
+as.character(submitedPrediction)
+```
+
+So, for the aim of the proposed problem, given all facts, _boosting_ seems to be the best choice.
