@@ -6,9 +6,9 @@ output:
 ---
 
 ## Overview
-This document will show the usage of machine learning algorithms to predict how well body movements are done using Human Activity Recognition sampled data. Training and testing datasets will be downloaded form their provided location, and they will be cleaned to ease training activities. After this, some machine learning learning algorithms will be applied to fit prediction models. Caret package utilities will be used to retrieve prediction quality measures and some conclusions will be extracted.
+This document will show the usage of machine learning algorithms to predict how well body movements are done using Human Activity Recognition sampled data. Training and testing datasets will be downloaded form their provided location, and they will be cleaned to ease training activities. After this, some machine learning algorithms will be applied to fit prediction models. Caret package utilities will be used to retrieve prediction quality measures and some conclusions will be extracted.
 
-Input data comes from the following study: [Qualitative Activity Recognition of Weight Lifting Exercises](http://groupware.les.inf.puc-rio.br/public/papers/2013.Velloso.QAR-WLE.pdf) where six participants performed a dumbell lifting exercise in several ways. Those ways, as described in the study, were “exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbell only halfway (Class C), lowering the dumbell only halfway (Class D) and throwing the hips to the front (Class E); class A corresponds to the specified execution of the exercise, while the other 4 classes correspond to common mistakes. This way of doing the exercise is the measure that will be predicted by machine learning algorithms.
+Input data comes from the following study: [Qualitative Activity Recognition of Weight Lifting Exercises](http://groupware.les.inf.puc-rio.br/public/papers/2013.Velloso.QAR-WLE.pdf) where six participants performed a dumbbell lifting exercise in several ways. Those ways, as described in the study, were “exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E); class A corresponds to the specified execution of the exercise, while the other 4 classes correspond to common mistakes. This way of doing the exercise is the measure that will be predicted by machine learning algorithms.
 
 
 ## Input data
@@ -27,10 +27,10 @@ download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.c
 harSubmission <- read.csv("pml-testing.csv")
 ```
 
-Dataset _harSubmission_ will only be used for the submission activity (it does not contain the variable to predict). So, _harDataFrame_ will be splitted into training and testing sets to fit prediction models that will be tested in this exercise. However, data transformations performed in the main dataset to clean it, must be also performed in the submission data set.
+Dataset _harSubmission_ will only be used for the submission activity (it does not contain the variable to predict). So, _harDataFrame_ will be splitted into training and testing sets to fit prediction models that will be tested in this exercise. However, data transformations performed in the main dataset will be carried out in the submission data set too.
 
 ## Cleaning data
-If dataset columns are checked, it can be seen that first 7 columns are pointless for predicting (they contain measures like measure, window or user indentifiers and timestamps), so they can be removed form the dataset:
+If dataset columns are checked, it can be seen that first 7 columns are pointless for predicting (they contain measures like user & window indentifiers or timestamps), so they can be removed form the dataset:
 
 ```{r removeUserTimestampVariables}
 #removing variables "X", "user_name", "raw_timestamp_part_1", "raw_timestamp_part_2", "cvtd_timestamp", "new_window", "num_window" from data frames
@@ -58,7 +58,7 @@ harSubmission <- harSubmission[,!names(harSubmission) %in% variablesToRemove]
 ncol(harDataFrame)
 ```
 
-Finally those predictors with very few different values in the dataset (zero or near zero variance variables) will be also removed form datasets.
+Finally those predictors with very few different values (zero or near zero variance variables) will be also removed form datasets.
 
 ```{r removeVariablesWithNearZeroVariance}
 variablesWithNearZeroVariance <- nearZeroVar(harDataFrame)
@@ -67,7 +67,7 @@ harSubmission <- harSubmission[,-variablesWithNearZeroVariance]
 names(harDataFrame)
 ```
 
-Remaining 52 predictors will be used to estimate the **classe** outcome. Removed 107 variables were not useful for that calculation.
+Remaining 52 predictors will be used to estimate the **classe** outcome. 107 variables removed were not useful for that calculation.
 
 ## Machine learning algorithm selection
 To apply machine learning algorithms, first we should create proper training and testing datasets
@@ -81,9 +81,11 @@ harDataTesting <- harDataFrame[-inTrain,]
 trControlCV <- trainControl(method = "cv", number = 4)
 ```
 
-For each algorithm, 3 different models will be fit: one with default settings (resampling made by bootstrapping), another with cross-validation (K-fold with K=4) and the last one with cross-validation and preprocessing. Tested algortims will be classification trees, random forest and boosting, they have been chosen because they are the most popular ones (if results are not good, perhaps some regression model should be tried).
+For each algorithm, 3 different models will be fit in a first approach: one with default settings (resampling made by bootstrapping), another with cross-validation (K-fold with K=4) and the last one with cross-validation and preprocessing. Tested algorithms will be classification trees, random forest and boosting, they have been chosen because they are the most popular ones (if results are not good, perhaps some regression model or some different configuration/preprocessing should be tried).
 
-Quality of algorithms will be based on the accuracy provided by applying fitted model against the testing dataset created above. Out of sample error is calculated as follows: 
+Quality of algorithms applied to this particular problem will be based on the accuracy provided by applying fitted models against the testing dataset created above. 
+
+Out of sample error is a function of accuracy, and it is calculated as follows: 
 **(1 - accuracy)**.
 
 
@@ -131,7 +133,7 @@ outOfSampleError <- rep(1,length(accuracy)) - accuracy
 ```{r printAccuracy2, ref.label="printAccuracy"}
 ```
 
-For this algorithm, training with bootstrapping resampling takes a very long amount of time (more than 20 minutes), so their results are not presented here. Other trainings take following time to fit the prediction model:
+For this algorithm, training with bootstrapping resampling takes a very large amount of time (more than 20 minutes), so its results are not presented here. Other trainings take following time to fit the prediction model:
 
 * cross-validation: 217 seconds
 * cross-validation with preprocessing: 212 seconds
@@ -158,7 +160,7 @@ outOfSampleError <- rep(1,length(accuracy)) - accuracy
 ```{r printAccuracy3, ref.label="printAccuracy"}
 ```
 
-As happened with boosting, training with bootstrapping resampling takes a very long amount of time (more than 30 minutes), so their results are not presented here. Other training take following time to fit the prediction model:
+As happened with boosting, training with bootstrapping resampling takes a very large amount of time (more than 30 minutes), so its results are not presented here. Other training take following time to fit the prediction model:
 
 * cross-validation: 523 seconds
 * cross-validation with preprocessing: 551 seconds
@@ -168,12 +170,10 @@ This algorithm provides for this dataset a slightly better accuracy that boostin
 ## Conclusions
 After tests performed in previous sections, it can be established that both _boosting_ and _random forest_ are good enough to deal with the proposed prediction problem in the given dataset. _Random forest_ is slightly more accurate but it is also much slower.
 
-For validation dataset used in the submission activity, every model fitted with _boosting_ and _random forest_ models provides the same prediction (which incidentally, is it fully correct when submitted)
+For the validation dataset used in the submission activity (_harSubmission_), every model fitted with _boosting_ and _random forest_ models provides the same prediction (which incidentally, is it fully correct when submitted):
 
 ```{r checkValidationSet}
 submitedPrediction <- predict(modelBoostCVPreProcess, harSubmission)
 all(sapply(list(predict(modelBoostCV, harSubmission), predict(modelRFCVPreProcess, harSubmission), predict(modelRFCV, harSubmission)), identical, submitedPrediction))
 as.character(submitedPrediction)
 ```
-
-So, for the aim of the proposed problem, given all facts, _boosting_ seems to be the best choice.
